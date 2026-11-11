@@ -8,10 +8,13 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Linux / Windows / macOS 三平台 × Python 3.10 / 3.12 —— 保证跨平台兼容
     strategy:
+      fail-fast: false
       matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ["3.10", "3.12"]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

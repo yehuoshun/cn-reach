@@ -82,9 +82,22 @@ print(bili.search("原神", limit=5)["items"][0])
 
 ---
 
+## 平台兼容
+
+支持 **Linux / macOS / Windows**，Python ≥ 3.10，**零第三方依赖**（只用标准库）。
+
+- 时间统一按 **北京时间（UTC+8）** 渲染，不看本机时区 —— 三平台输出一致。
+- cookie 默认路径 `~/.openclaw/secrets/bilibili-cookies.txt`（Windows 即
+  `%USERPROFILE%\.openclaw\secrets\bilibili-cookies.txt`），可用环境变量 `CNREACH_BILI_COOKIE` 覆盖；
+  路径全走 `pathlib`，不硬编码 `/` 或 `\`。
+- CLI 强制 UTF-8 输出，Windows 下管道/重定向时中文不乱码。
+- CI 跑 **ubuntu / windows / macos** × Python **3.10 / 3.12** 六种组合。
+
+---
+
 ## 测试
 
-零依赖（标准库 `unittest`），CI 在 push / PR 时跑 Python 3.10 / 3.12。
+零依赖（标准库 `unittest`），CI 在 push / PR 时跑 **三平台 × 两个 Python 版本**。
 
 ```bash
 # 离线单元测试（mock 掉网络层）—— 24 条

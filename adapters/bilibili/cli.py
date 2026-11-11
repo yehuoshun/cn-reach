@@ -18,11 +18,24 @@ from .adapter import BilibiliAdapter
 from .client import BiliError
 
 
+def _force_utf8() -> None:
+    """Windows 上 stdout 重定向到管道/文件时默认走本地编码（如 cp936），中文会炸；
+    统一改 UTF-8（Python 3.7+）。"""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            try:
+                reconfigure(encoding="utf-8")
+            except Exception:  # noqa: BLE001 —— 重定向场景下失败就保持原样
+                pass
+
+
 def _dump(obj) -> None:
     print(json.dumps(obj, ensure_ascii=False, indent=2))
 
 
 def main(argv: list[str] | None = None) -> int:
+    _force_utf8()
     ap = argparse.ArgumentParser(prog="cn-reach bilibili", description="B站只读能力")
     sub = ap.add_subparsers(dest="cmd", required=True)
 

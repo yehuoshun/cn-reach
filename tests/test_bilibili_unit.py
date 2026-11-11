@@ -5,20 +5,12 @@
     pytest -q                                        # 若装了 pytest（可直接跑本文件）
 """
 import json
-import os
-import time
 import unittest
-import urllib.error
 from unittest import mock
-
-# 固定时区，保证 pubdate 格式化结果在任何 runner 上一致（CI 默认 UTC，开发机是 CST）
-if hasattr(time, "tzset"):
-    os.environ["TZ"] = "Asia/Shanghai"
-    time.tzset()
 
 from adapters.bilibili import adapter as A
 from adapters.bilibili import client as C
-from adapters.bilibili.adapter import BilibiliAdapter, _clean, _ts
+from adapters.bilibili.adapter import BilibiliAdapter, _bj_time, _clean, _ts
 
 # ───────────────────────── 测试数据 ─────────────────────────
 
@@ -60,6 +52,13 @@ class UtilsTest(unittest.TestCase):
         self.assertEqual(_ts(0), "00:00")
         self.assertEqual(_ts(75), "01:15")
         self.assertEqual(_ts(3601), "60:01")
+
+    def test_bj_time_is_timezone_independent(self):
+        # 1700000000 = 2023-11-14 22:13:20 UTC = 2023-11-15 06:13:20 北京时间
+        self.assertEqual(_bj_time(1700000000), "2023-11-15 06:13")
+        self.assertEqual(_bj_time(1700000000, "%Y-%m-%d"), "2023-11-15")
+        self.assertEqual(_bj_time(0), "1970-01-01 08:00")
+        self.assertEqual(_bj_time(None), "1970-01-01 08:00")
 
 
 # ───────────────────────── BV / wbi ─────────────────────────

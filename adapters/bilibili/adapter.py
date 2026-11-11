@@ -12,6 +12,9 @@ from .client import API, BiliError, get_json, parse_bvid, wbi_mix, wbi_query
 
 TAG_RE = re.compile(r"<[^>]+>")
 
+# 统一按北京时间（UTC+8）渲染，不依赖本机时区 —— Linux / macOS / Windows 结果一致。
+BJ_OFFSET = 8 * 3600
+
 
 def _clean(text: str | None) -> str:
     return TAG_RE.sub("", text or "").strip()
@@ -20,6 +23,11 @@ def _clean(text: str | None) -> str:
 def _ts(sec: float | int | None) -> str:
     s = int(sec or 0)
     return f"{s // 60:02d}:{s % 60:02d}"
+
+
+def _bj_time(ts: float | int | None, fmt: str = "%Y-%m-%d %H:%M") -> str:
+    """epoch 秒 → 北京时间字符串（用 gmtime+偏移，不调 localtime，跨平台确定）。"""
+    return time.strftime(fmt, time.gmtime(int(ts or 0) + BJ_OFFSET))
 
 
 class BilibiliAdapter:
@@ -88,7 +96,7 @@ class BilibiliAdapter:
                 "play": v.get("play"),
                 "danmaku": v.get("video_review"),
                 "duration": v.get("duration"),
-                "pubdate": time.strftime("%Y-%m-%d", time.localtime(pub)) if pub else None,
+                "pubdate": _bj_time(pub, "%Y-%m-%d") if pub else None,
                 "description": _clean(v.get("description"))[:200],
             })
             if limit and len(items) >= limit:
@@ -119,7 +127,7 @@ class BilibiliAdapter:
             "desc": d.get("desc", ""),
             "duration": d.get("duration", 0),
             "duration_hms": _ts(d.get("duration")),
-            "pubdate": time.strftime("%Y-%m-%d %H:%M", time.localtime(d.get("pubdate") or 0)),
+            "pubdate": _bj_time(d.get("pubdate")),
             "url": f"https://www.bilibili.com/video/{d['bvid']}",
             "cover": d.get("pic"),
             "pages": [{"cid": p["cid"], "part": p["part"], "duration": p.get("duration")}
@@ -219,7 +227,7 @@ class BilibiliAdapter:
                 "user": (r.get("member") or {}).get("uname"),
                 "like": r.get("like", 0),
                 "content": (r.get("content") or {}).get("message", ""),
-                "time": time.strftime("%Y-%m-%d %H:%M", time.localtime(r.get("ctime") or 0)),
+                "time": _bj_time(r.get("ctime")),
             })
         return {"platform": self.name, "id": d["bvid"], "sort": sort,
                 "count": len(items), "items": items}
