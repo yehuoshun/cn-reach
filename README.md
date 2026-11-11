@@ -82,6 +82,26 @@ print(bili.search("原神", limit=5)["items"][0])
 
 ---
 
+## 测试
+
+零依赖（标准库 `unittest`），CI 在 push / PR 时跑 Python 3.10 / 3.12。
+
+```bash
+# 离线单元测试（mock 掉网络层）—— 24 条
+python -m unittest discover -s tests -t . -v
+
+# 联网冒烟测试（默认跳过，需本机有效 cookie）—— 5 条
+CNREACH_LIVE=1 python -m unittest tests.test_bilibili_live -v
+```
+
+测试覆盖：BV 解析、**wbi 签名（含官方文档已知向量）**、请求层错误归一化
+（`-412` 风控立即失败 / 业务错误不重试）、搜索与详情归一化、字幕可用性与**语速可信度**
+（含多P 按分P 时长）、无字幕兜底、评论归一化、适配器注册表。
+
+> CI 只跑离线用例；联网用例依赖真实 IP 与 cookie，不进 CI（B站出口 IP 容易触发 `-412`）。
+
+---
+
 ## 设计取向
 
 1. **多后端路由，不重造轮子。** 每个平台是一个 adapter，背后可挂 API / CLI / MCP / 浏览器登录态；上层统一命令。
@@ -104,6 +124,9 @@ cn-reach/
 │   │   ├── adapter.py         # 能力层：search / video / subtitles / comments
 │   │   └── cli.py             # 命令行：python -m adapters.bilibili.cli
 │   └── <platform>/            # 其它平台照此新增
+├── tests/
+│   ├── test_bilibili_unit.py  # 离线单元测试（mock 网络）
+│   └── test_bilibili_live.py  # 联网冒烟（默认跳过）
 ├── docs/
 │   └── adding-a-platform.md   # 新增平台适配器的规范
 └── README.md

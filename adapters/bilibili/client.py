@@ -112,15 +112,20 @@ def get_json(url: str, cookie: str = "", tries: int = 3, timeout: int = 15):
     raise BiliError(f"请求失败：{url}（{last}）", kind="network")
 
 
+def mixin_key(img_key: str, sub_key: str) -> str:
+    """由 img_key + sub_key 混出 32 位 mixinKey（纯函数，便于测试）。"""
+    if not img_key or not sub_key:
+        raise BiliError("空的 wbi key（nav 接口异常）", kind="api")
+    return "".join((img_key + sub_key)[i] for i in MIXIN_KEY_ENC_TAB)[:32]
+
+
 def wbi_mix(cookie: str = "") -> str:
     """取 wbi 混淆 key（每次请求前取一次即可，短时间复用）。"""
     nav = get_json(f"{API}/x/web-interface/nav", cookie)
     wbi = (nav.get("data") or {}).get("wbi_img") or {}
     img = (wbi.get("img_url") or "").rsplit("/", 1)[-1].split(".")[0]
     sub = (wbi.get("sub_url") or "").rsplit("/", 1)[-1].split(".")[0]
-    if not img or not sub:
-        raise BiliError("拿不到 wbi key（nav 接口异常）", kind="api")
-    return "".join((img + sub)[i] for i in MIXIN_KEY_ENC_TAB)[:32]
+    return mixin_key(img, sub)
 
 
 def wbi_query(params: dict, mix: str) -> str:
