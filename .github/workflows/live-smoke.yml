@@ -1,0 +1,42 @@
+name: live-smoke
+
+# 联网冒烟：B站出口 IP 容易踩 -412，所以只放在定时任务里，不卡主流程的 ci。
+on:
+  schedule:
+    - cron: "0 3 * * *"      # 每天 03:00 UTC = 11:00 CST
+  workflow_dispatch:
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # 可选：仓库 secret 里存了 BILI_COOKIE（含 SESSDATA）就注入，能覆盖字幕分支；
+      # 没配也照跑，只是停在公开接口（doctor / search / video / comments / 兜底）。
+      - name: 可选注入 cookie
+        env:
+          BILI_COOKIE: ${{ secrets.BILI_COOKIE }}
+        run: |
+          if [ -n "$BILI_COOKIE" ]; then
+            mkdir -p "$HOME/.openclaw/secrets"
+            printf '%s' "$BILI_COOKIE" > "$HOME/.openclaw/secrets/bilibili-cookies.txt"
+            echo "已注入 BILI_COOKIE"
+          else
+            echo "未配置 BILI_COOKIE，仅跑公开接口"
+          fi
+
+      - name: 联网冒烟测试
+        run: CNREACH_LIVE=1 python -m unittest tests.test_bilibili_live -v
+
+      - name: 失败时钉钉告警
+        if: failure()
+        env:
+          WEBHOOK: ${{ secrets.DINGTALK_WEBHOOK }}
+        run: |
+          curl -s -X POST "$WEBHOOK" -H 'Content-Type: application/json' \
+            -d "{\"msgtype\":\"text\",\"text\":{\"content\":\"[GitHub] cn-reach 联网冒烟失败：${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}}"
+          echo "已发送钉钉告警"

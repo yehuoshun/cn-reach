@@ -94,6 +94,13 @@ python -m unittest discover -s tests -t . -v
 CNREACH_LIVE=1 python -m unittest tests.test_bilibili_live -v
 ```
 
+CI 分两档：
+
+- **`ci`**（push / PR）：只跑离线单测，秒级，不联网。
+- **`live-smoke`**（每天 11:00 CST + 手动）：跑联网冒烟，失败钉钉告警。
+  B站出口 IP 容易踩 `-412`，所以联网用例不进主流程。仓库 secret 配了 `BILI_COOKIE`
+  会自动注入以覆盖字幕分支；没配就只跑公开接口。
+
 测试覆盖：BV 解析、**wbi 签名（含官方文档已知向量）**、请求层错误归一化
 （`-412` 风控立即失败 / 业务错误不重试）、搜索与详情归一化、字幕可用性与**语速可信度**
 （含多P 按分P 时长）、无字幕兜底、评论归一化、适配器注册表。
