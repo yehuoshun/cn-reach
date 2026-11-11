@@ -18,6 +18,14 @@ class LiveSmokeTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.ad = BilibiliAdapter()
+        # 出口 IP 被风控（-412 / v_voucher）或不通时，整组跳过而不是报错。
+        # GitHub runner 是海外机房 IP，几乎必然被 B站 挡；本机（国内出口）才跑得动。
+        probe = cls.ad.doctor()
+        if not probe.get("ok"):
+            if probe.get("kind") in ("risk", "network"):
+                raise unittest.SkipTest(
+                    f"出口 IP 不可用（{probe.get('kind')}：{probe.get('error')}）——跳过联网冒烟")
+            raise AssertionError(f"doctor 失败：{probe}")
 
     def test_doctor(self):
         out = self.ad.doctor()
