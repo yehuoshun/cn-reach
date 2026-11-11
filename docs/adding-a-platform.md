@@ -2,6 +2,9 @@
 
 每个平台在 `adapters/<platform>/` 下自成一体，对外只暴露一组**稳定、最小**的能力。
 
+> 📖 参考实现：[`adapters/bilibili/`](../adapters/bilibili/)（B站，只读）——它按本文的结构拆成
+> `client.py`（请求层）/ `adapter.py`（能力层）/ `cli.py`（命令行），新增平台可照此复制。
+
 ## 1. 定能力面
 
 只读优先。一个适配器通常实现：
@@ -36,7 +39,12 @@
 
 适配器要能被统一体检命令探测：输出「当前激活后端 / 是否登录 / 是否可用」，供 `doctor` 汇总。
 
-## 5. 提交前自查
+## 5. 注册适配器
+
+在 `adapters/__init__.py` 的 `REGISTRY` 里加一行 `"<platform>": "adapters.<platform>.adapter:<Platform>Adapter"`，
+让统一入口 `get_adapter("<platform>")` 认得它。
+
+## 6. 提交前自查
 
 ```bash
 git diff --cached | grep -iE '(token|secret|cookie|password|api_key|webhook)' | grep -v '.example'
