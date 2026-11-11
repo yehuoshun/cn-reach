@@ -1,0 +1,28 @@
+# 凭据 —— 永不入库
+.env
+.env.*
+*.env
+credentials.json
+credentials.env
+*cookie*
+*token*
+*.pem
+*.key
+secrets/
+
+# 抓取产物 / 临时文件
+tmp/
+out/
+*.log
+
+# 依赖
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# 编辑器
+.vscode/
+.idea/
+.DS_Store
