@@ -5,9 +5,16 @@
     pytest -q                                        # 若装了 pytest（可直接跑本文件）
 """
 import json
+import os
+import time
 import unittest
 import urllib.error
 from unittest import mock
+
+# 固定时区，保证 pubdate 格式化结果在任何 runner 上一致（CI 默认 UTC，开发机是 CST）
+if hasattr(time, "tzset"):
+    os.environ["TZ"] = "Asia/Shanghai"
+    time.tzset()
 
 from adapters.bilibili import adapter as A
 from adapters.bilibili import client as C
