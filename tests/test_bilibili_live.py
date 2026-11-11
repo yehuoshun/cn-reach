@@ -22,9 +22,13 @@ class LiveSmokeTest(unittest.TestCase):
         # GitHub runner 是海外机房 IP，几乎必然被 B站 挡；本机（国内出口）才跑得动。
         probe = cls.ad.doctor()
         if not probe.get("ok"):
-            if probe.get("kind") in ("risk", "network"):
+            # 没配 cookie，或出口 IP 被风控 / 不通 → 整组跳过而不是报错。
+            # GitHub runner 是海外机房 IP 且默认没有 cookie，几乎必然跑不了；
+            # 本机（国内出口 + 有效 cookie）才真正执行。
+            if not probe.get("has_cookie") or probe.get("kind") in ("risk", "network"):
                 raise unittest.SkipTest(
-                    f"出口 IP 不可用（{probe.get('kind')}：{probe.get('error')}）——跳过联网冒烟")
+                    f"联网条件不足（cookie={probe.get('has_cookie')}, {probe.get('kind')}："
+                    f"{probe.get('error')}）——跳过联网冒烟")
             raise AssertionError(f"doctor 失败：{probe}")
 
     def test_doctor(self):
