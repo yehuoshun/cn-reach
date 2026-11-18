@@ -59,8 +59,8 @@ class LiveL1Capabilities(LiveCapabilityBase):
 
     def test_03_pages(self):
         out = self.call("pages", target=SAMPLE_BV)
-        self.assert_nonempty_list(out, "pages", "pages")
-        self.assertTrue(out["pages"][0].get("cid"), "pages 缺 cid")
+        self.assert_nonempty_list(out, "items", "pages")
+        self.assertTrue(out["items"][0].get("cid"), "pages 缺 cid")
 
     def test_04_playurl(self):
         out = self.call("playurl", target=SAMPLE_BV)
@@ -68,7 +68,7 @@ class LiveL1Capabilities(LiveCapabilityBase):
 
     def test_05_comments(self):
         out = self.call("comments", target=SAMPLE_BV, limit=5)
-        self.assert_nonempty_list(out, "comments", "comments")
+        self.assert_nonempty_list(out, "items", "comments")
 
     def test_06_related(self):
         out = self.call("related", target=SAMPLE_BV, limit=5)
@@ -76,13 +76,14 @@ class LiveL1Capabilities(LiveCapabilityBase):
 
     def test_07_online(self):
         out = self.call("online", target=SAMPLE_BV)
-        self.assertIn("total", out, "online 缺 total")
+        self.assertIn("online", out, "online 缺 online 字段")
+        self.assertIsInstance(out["online"], int, "online 必须归一成 int")
 
     def test_08_danmaku(self):
         out = self.call("danmaku", target=SAMPLE_BV, segment=1, limit=20)
-        self.assert_nonempty_list(out, "danmaku", "danmaku")
-        if out["danmaku"]:
-            item = out["danmaku"][0]
+        self.assert_nonempty_list(out, "items", "danmaku")
+        if out["items"]:
+            item = out["items"][0]
             self.assertIn("text", item, "danmaku 条目缺 text")
             self.assertIn("time_sec", item, "danmaku 条目缺 time_sec")
 
@@ -136,7 +137,12 @@ class LiveL1Capabilities(LiveCapabilityBase):
     def test_20_subtitle(self):
         # 字幕必须登录态才给 subtitle_url；没 cookie 时允许走「简介+热评」兜底
         out = self.call("subtitle", target=SAMPLE_BV, max_chars=1000)
-        self.assertIn("mode", out, "subtitle 缺 mode（用于区分真字幕 / 兜底）")
+        # 字幕必须登录态才给；无字幕时走「简介 + 热评」兜底，两条路都要能一眼分辨
+        self.assertIn("available", out, "subtitle 缺 available（区分真字幕 / 兜底）")
+        if out["available"]:
+            self.assertTrue(out.get("subtitle") or out.get("body"), "有字幕却没有内容")
+        else:
+            self.assertTrue(out.get("fallback"), "无字幕时必须给出 fallback")
 
 
 @unittest.skipUnless(LIVE, "联网验收：设置 CNREACH_LIVE=1 才跑")

@@ -28,7 +28,7 @@ Agent 不用关心背后是官方 API、第三方 CLI、浏览器登录态还是
 
 | 平台 | 能力 | 后端 | 状态 |
 |---|---|---|---|
-| **B站 / Bilibili** | 搜索、视频详情、字幕、评论 | 官方 web API（wbi 签名 + Cookie） | ✅ 可用 |
+| **B站 / Bilibili** | 搜索、详情、字幕、评论、弹幕、播放地址、榜单、UP主、番剧、直播、收藏夹、动态等 **28 项能力**（20 项公开 + 8 项登录态） | 官方 web API（wbi 签名 + Cookie） | ✅ 可用 |
 | **小黑盒 / HeyBox** | 游戏详情、评分、资讯、社区帖子 | 登录态 API（逆向） | 🗺️ 规划 |
 | 微博 / Weibo | 搜索、热搜、用户时间线 | web API + Cookie | 🗺️ 规划 |
 | 知乎 / Zhihu | 搜索、问答、专栏 | web API + Cookie | 🗺️ 规划 |
@@ -54,6 +54,10 @@ Agent 不用关心背后是官方 API、第三方 CLI、浏览器登录态还是
 # 2) 体检：cookie / 登录态 / wbi 是否就绪
 export PYTHONPATH=.
 python3 -m adapters.bilibili.cli doctor
+#    体检不通过时退出码为 3（不是 0），方便脚本判断
+
+# 2.1) 看当前有哪些能力（名字 / 说明 / 是否需要登录 / 参数）
+python3 -m adapters.bilibili.cli list
 
 # 3) 搜索
 python3 -m adapters.bilibili.cli search "崩坏3 爱莉希雅" --limit 5 --order pubdate
@@ -80,6 +84,62 @@ bili = get_adapter("bilibili")          # 目前唯一注册的适配器
 print(bili.search("原神", limit=5)["items"][0])
 ```
 
+
+---
+
+## B站能力清单（28 项）
+
+对外只暴露**能力名**，不罗列端点路径与签名细节——调用方只需要知道「能拿到什么」。
+完整参数表用 `python3 -m adapters.bilibili.cli list` 查看；`*` 表示必填。
+
+**内容取数（10 项 · 公开）**
+
+| 能力 | 说明 |
+|---|---|
+| `search` | 按关键词搜索视频，可排序翻页 |
+| `video` | 视频详情（标题 / UP主 / 时长 / 统计 / 分P） |
+| `pages` | 分P 列表（cid / 标题 / 时长） |
+| `playurl` | 播放地址：默认给 dash 流并做裁剪，清晰度受登录态影响 |
+| `subtitle` | 取字幕；没有字幕时兜底返回简介和热评，并用 `available` 标明不是字幕 |
+| `comments` | 取评论（热评或最新） |
+| `replies` | 楼中楼子评论 |
+| `danmaku` | 分段弹幕：按时间段取一段，解析失败自动退回整片弹幕 |
+| `related` | 相关推荐视频 |
+| `online` | 当前在线观看人数 |
+
+**站点结构（11 项 · 公开）**
+
+| 能力 | 说明 |
+|---|---|
+| `ranking` | 排行榜：全站或分区热榜 |
+| `popular` | 综合热门 |
+| `region` | 分区最新投稿 |
+| `up_info` | UP主信息：昵称 / 签名 / 等级 / 头像 / 主页链接 |
+| `up_videos` | UP主投稿列表 |
+| `season` | 番剧 / 影视季：简介、评分、播放数与分集 |
+| `article` | 专栏：标题 / 作者 / 正文 / 阅读点赞计数 |
+| `live_room` | 直播间：主播、标题、分区、在线人气、开播状态 |
+| `fav` | 公开收藏夹：夹名、夹主与里面的视频 |
+| `relation_stat` | 关注数与粉丝数 |
+| `dynamic` | UP主动态（视频 / 图文 / 专栏 / 转发）与互动数 |
+
+**登录态账号（8 项 · 需 cookie，只读）**
+
+| 能力 | 说明 |
+|---|---|
+| `me` | 我的登录信息：用户名 / 等级 / 是否登录 |
+| `history` | 我的观看历史 |
+| `toview` | 我的稍后再看 |
+| `my_folders` | 我的收藏夹列表 |
+| `followings` | 我关注的人 |
+| `followers` | 关注我的人 |
+| `my_dynamic` | 我的动态时间线 |
+| `my_bangumi` | 我的追番列表 |
+
+> 写操作（投币、点赞、收藏、发评论、私信）**一个都没有**：本项目只读。
+> 需要登录态的能力在没有 cookie 时**不发请求**，直接按 `auth` 类型报错；
+> 公开能力在无 cookie 下即可用（`up_info` / `up_videos` 例外，B站对匿名请求收紧了，需要 cookie）。
+
 ---
 
 ## 平台兼容
@@ -100,11 +160,14 @@ print(bili.search("原神", limit=5)["items"][0])
 零依赖（标准库 `unittest`），CI 在 push / PR 时跑 **三平台 × 两个 Python 版本**。
 
 ```bash
-# 离线单元测试（mock 掉网络层）—— 24 条
+# 离线单元测试（mock 掉网络层）—— 180 条
 python -m unittest discover -s tests -t . -v
 
 # 联网冒烟测试（默认跳过，需本机有效 cookie）—— 5 条
 CNREACH_LIVE=1 python -m unittest tests.test_bilibili_live -v
+
+# 全部能力的联网验收（28 条：20 项公开 + 8 项账号；无 cookie 时账号组自动跳过）
+CNREACH_LIVE=1 python -m unittest tests.test_bilibili_live_capabilities -v
 ```
 
 CI 分两档：
@@ -141,14 +204,25 @@ CI 分两档：
 cn-reach/
 ├── adapters/
 │   ├── __init__.py            # 适配器注册表 + get_adapter()
-│   ├── bilibili/              # ✅ B站（只读）
+│   ├── bilibili/              # ✅ B站（只读，28 项能力）
 │   │   ├── client.py          # 请求层：cookie / 重试退避 / wbi 签名 / 错误归一化
-│   │   ├── adapter.py         # 能力层：search / video / subtitles / comments
-│   │   └── cli.py             # 命令行：python -m adapters.bilibili.cli
+│   │   ├── pb.py              # protobuf 极简解码（弹幕用，零依赖手写）
+│   │   ├── adapter.py         # 适配层：能力分发 / doctor / 老版本 API
+│   │   ├── capabilities/      # 能力注册表（对外只暴露能力，不暴露端点）
+│   │   │   ├── spec.py        #   Capability / Param 契约
+│   │   │   ├── content.py     #   内容取数 10 项
+│   │   │   ├── site.py        #   站点结构 11 项
+│   │   │   └── account.py     #   登录态账号 8 项
+│   │   └── cli.py             # 命令行：按注册表自动生成子命令
 │   └── <platform>/            # 其它平台照此新增
 ├── tests/
-│   ├── test_bilibili_unit.py  # 离线单元测试（mock 网络）
-│   └── test_bilibili_live.py  # 联网冒烟（默认跳过）
+│   ├── test_bilibili_unit.py              # 离线单元测试（mock 网络）
+│   ├── test_bili_content.py               # 内容能力 38 条
+│   ├── test_bili_site.py                  # 站点能力 48 条
+│   ├── test_bili_account.py               # 账号能力 19 条
+│   ├── test_bili_contract.py              # 能力契约 17 条
+│   ├── test_bilibili_live.py              # 联网冒烟（默认跳过）
+│   └── test_bilibili_live_capabilities.py # 全部能力联网验收（默认跳过）
 ├── docs/
 │   └── adding-a-platform.md   # 新增平台适配器的规范
 └── README.md

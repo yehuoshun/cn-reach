@@ -63,7 +63,8 @@ CLI 子命令与 `catalog()` 清单都由它生成，不需要再手写一遍。
 
 硬规矩：
 
-- 返回体统一 dict，**必须**含 `"platform"`；列表字段用复数（`items` / `comments` / `pages`）。
+- 返回体统一 dict，**必须**含 `"platform"`；**列表一律放在 `items` 字段**里（不要另起 `comments` / `videos` 这种名字，
+  同一份数据在不同能力里叫不同名字是上层最讨厌的坑），条数放 `count`。
 - 失败抛 `BiliError(kind=...)`（`api / risk / network / auth / not_found`），不要返回空壳假装成功。
 - 时间字段统一按**北京时间**渲染成字符串，别依赖本机时区。
 - `auth=True` 的能力在无 cookie 时必须**不发请求**就报错。
