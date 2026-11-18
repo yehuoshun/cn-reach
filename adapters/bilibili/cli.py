@@ -26,7 +26,7 @@ from .adapter import BilibiliAdapter
 from .client import BiliError
 
 # 保留子命令，优先于能力名解析
-RESERVED = ("list", "doctor")
+RESERVED = ("list", "doctor", "login")
 
 
 def _force_utf8() -> None:
@@ -108,6 +108,7 @@ def _print_help(caps: dict) -> None:
     print("子命令:")
     print("  list      列出全部能力（名字 / 说明 / 是否需要登录 / 参数）")
     print("  doctor    检查 cookie / 登录态 / wbi（体检不通过退出码为 3）")
+    print("  login     扫码换新 cookie（二维码 PNG 落到 <工作区>/tmp；缺 qrcode 库时退出码 4）")
     print(f"  <能力名>  由注册表自动生成，当前可用: {', '.join(sorted(caps))}")
     print()
     print("必填参数当位置参数传，可选参数用 --名字 值（page_size 写作 --page-size）。")
@@ -135,6 +136,10 @@ def main(argv: list[str] | None = None) -> int:
         _dump(out)
         # 体检不通过必须是非零退出码（旧版错返回 0，运维脚本会把亚健康当成健康）
         return 0 if out.get("ok") else 3
+
+    if cmd == "login":
+        from .login import main as login_main
+        return login_main(rest)
 
     cap = _resolve(caps, cmd)
     if cap is None:
