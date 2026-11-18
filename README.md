@@ -39,6 +39,8 @@ Agent 不用关心背后是官方 API、第三方 CLI、浏览器登录态还是
 | NGA / 虎扑 | 板块、帖子 | web API | 🙋 招募 |
 
 > 只读优先。写操作（发帖、评论、点赞）默认不提供；确需时走显式、可审计的开关。
+>
+> 使用前请先读 [`DISCLAIMER.md`](DISCLAIMER.md)：本项目只做只读查阅，明确不支持下载音视频、会员内容、绕过风控与批量采集。
 
 ---
 
@@ -260,6 +262,18 @@ cn-reach/
 - [Awesome China MCP](https://github.com/zackchewa/awesome-china-mcp) — 国内 MCP Server 索引
 - [bili-digest](https://github.com/yehuoshun/bili-digest) — B站视频摘读
 - [interest-radar](https://github.com/yehuoshun/interest-radar) — 每日 B站兴趣雷达
+
+---
+
+## 免责声明
+
+**本项目是非官方个人项目，与哔哩哔哩及本项目接入的任何平台均无关联、未获授权。**
+
+- 只做**只读**查阅：不提供任何写操作；不支持下载音视频、不获取付费/会员专享内容、不绕过验证码与风控、不做批量采集。
+- 请仅用于查看你自己有权查看的公开内容与你自己账号的数据，并自行控制调用频率。
+- 使用本项目的一切后果由使用者自行承担。Cookie 由你自己保管，**绝不要提交到仓库**。
+
+完整说明（技术边界、使用者责任、无担保、权利人联系方式）见 [`DISCLAIMER.md`](DISCLAIMER.md)。
 
 ---
 
