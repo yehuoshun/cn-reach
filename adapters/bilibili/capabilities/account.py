@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-"""L2 登录态能力：我的信息 / 观看历史 / 稍后再看 / 我的收藏夹 / 关注 / 粉丝 / 动态时间线 / 追番。
+"""L2 登录态能力：我的信息 / 观看历史 / 稍后再看 / 我的收藏夹 / 关注 / 动态时间线 / 追番。
 
 全部需要登录态（cookie 里要有 SESSDATA）。没有 cookie 时由 BilibiliAdapter.call()
 直接抛 auth 错，一个请求都不会发出去；cookie 过期则由 nav 返回 isLogin=False 兜住。
 
-需要 mid 的列表（收藏夹 / 关注 / 粉丝 / 追番）统一从 nav 里取，不让用户传。
+需要 mid 的列表（收藏夹 / 关注 / 追番）统一从 nav 里取，不让用户传。
 端点路径、签名方式只留在本文件内，不写进 summary / catalog（对外只暴露能力）。
 """
 from __future__ import annotations
@@ -185,10 +185,10 @@ def _my_folders(ad, **_) -> dict:
             "total": data.get("count"), "items": items}
 
 
-# ───────────────────────── 5/6. followings / followers ─────────────────────────
+# ───────────────────────── 5. followings ─────────────────────────
 
 def _relation(ad, path: str, page, page_size) -> dict:
-    """关注 / 粉丝列表共用一套解析。"""
+    """关注列表（followings）的解析。"""
     mid = _mid(ad)
     pn = _clamp(page, 1, 1000, 1)
     ps = _clamp(page_size, 1, MAX_PAGE_SIZE, 20)
@@ -208,11 +208,6 @@ def _relation(ad, path: str, page, page_size) -> dict:
 def _followings(ad, page: int = 1, page_size: int = 20, **_) -> dict:
     """我关注的人（按关注时间倒序）。"""
     return _relation(ad, "/x/relation/followings", page, page_size)
-
-
-def _followers(ad, page: int = 1, page_size: int = 20, **_) -> dict:
-    """关注我的人（按关注时间倒序）。"""
-    return _relation(ad, "/x/relation/followers", page, page_size)
 
 
 # ───────────────────────── 7. my_dynamic ─────────────────────────
@@ -325,16 +320,6 @@ CAPABILITIES: list[Capability] = [
         name="followings",
         summary="我关注的人（按关注时间倒序）",
         handler=_followings,
-        params=(
-            param("page", int, default=1, help="页码，从 1 开始"),
-            param("page_size", int, default=20, help="每页条数（上限 50）"),
-        ),
-        auth=True,
-    ),
-    Capability(
-        name="followers",
-        summary="关注我的人（按关注时间倒序）",
-        handler=_followers,
         params=(
             param("page", int, default=1, help="页码，从 1 开始"),
             param("page_size", int, default=20, help="每页条数（上限 50）"),

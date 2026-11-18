@@ -5,8 +5,11 @@
     CNREACH_LIVE=1 python -m unittest tests.test_bilibili_live_capabilities -v
 
 分两组：
-  L1 公开能力 —— 不需要 cookie，国内出口即可跑通
-  L2 账号能力 —— 需要有效 cookie，没有 cookie 时整组跳过
+  L1 公开能力 —— 不需要 cookie，国内出口即可跑通（13 项）
+  L2 账号能力 —— 需要有效 cookie，没有 cookie 时整组跳过（7 项）
+
+能力面按「只读、本人可访问、不做全量采集」收窄过一轮：playurl / danmaku / online /
+region / article / live_room / fav / relation_stat / followers 已移除，不再验收。
 
 注意：这是验收用例，不是 CI 用例。B站出口 IP 容易踩 -412，CI 不跑它。
 """
@@ -62,82 +65,51 @@ class LiveL1Capabilities(LiveCapabilityBase):
         self.assert_nonempty_list(out, "items", "pages")
         self.assertTrue(out["items"][0].get("cid"), "pages 缺 cid")
 
-    def test_04_playurl(self):
-        out = self.call("playurl", target=SAMPLE_BV)
-        self.assertTrue(out.get("is_dash") or out.get("durl"), "playurl 既没有 dash 也没有 durl")
-
-    def test_05_comments(self):
+    def test_04_comments(self):
         out = self.call("comments", target=SAMPLE_BV, limit=5)
         self.assert_nonempty_list(out, "items", "comments")
+
+    def test_05_replies(self):
+        # 楼中楼：不给 root 时应自动挑一条有回复的热评；随机视频可能挑不到，允许空但要成功返回
+        out = self.call("replies", target=SAMPLE_BV, limit=5)
+        self.assert_nonempty_list(out, "items", "replies")
+        if out["items"]:
+            item = out["items"][0]
+            self.assertTrue(item.get("text") or item.get("content"), "replies 条目缺正文")
 
     def test_06_related(self):
         out = self.call("related", target=SAMPLE_BV, limit=5)
         self.assert_nonempty_list(out, "items", "related")
 
-    def test_07_online(self):
-        out = self.call("online", target=SAMPLE_BV)
-        self.assertIn("online", out, "online 缺 online 字段")
-        self.assertIsInstance(out["online"], int, "online 必须归一成 int")
-
-    def test_08_danmaku(self):
-        out = self.call("danmaku", target=SAMPLE_BV, segment=1, limit=20)
-        self.assert_nonempty_list(out, "items", "danmaku")
-        if out["items"]:
-            item = out["items"][0]
-            self.assertIn("text", item, "danmaku 条目缺 text")
-            self.assertIn("time_sec", item, "danmaku 条目缺 time_sec")
-
-    def test_09_ranking(self):
+    def test_07_ranking(self):
         out = self.call("ranking", limit=5)
         self.assert_nonempty_list(out, "items", "ranking")
         self.assertTrue(out["items"], "排行榜为空")
 
-    def test_10_popular(self):
+    def test_08_popular(self):
         out = self.call("popular", page_size=5)
         self.assert_nonempty_list(out, "items", "popular")
 
-    def test_11_region(self):
-        out = self.call("region", rid=1, page_size=5)
-        self.assert_nonempty_list(out, "items", "region")
-
-    def test_12_up_info(self):
+    def test_09_up_info(self):
         out = self.call("up_info", mid=2)
         self.assertTrue(out.get("name"), "up_info 缺 name")
 
-    def test_13_up_videos(self):
+    def test_10_up_videos(self):
         out = self.call("up_videos", mid=2, page_size=5)
         self.assert_nonempty_list(out, "items", "up_videos")
 
-    def test_14_relation_stat(self):
-        out = self.call("relation_stat", vmid=2)
-        self.assertIn("follower", out, "relation_stat 缺 follower")
-
-    def test_15_season(self):
+    def test_11_season(self):
         # 番剧：鬼灭之刃（season_id 固定）
         out = self.call("season", season_id=28747)
         self.assertTrue(out.get("title"), "season 缺 title")
 
-    def test_16_article(self):
-        out = self.call("article", cv=170001)
-        self.assertTrue(out.get("title") or out.get("content"), "article 缺 title/content")
-
-    def test_17_live_room(self):
-        out = self.call("live_room", room_id=6)
-        self.assertTrue(out.get("room_id") or out.get("title"), "live_room 缺标识")
-
-    def test_18_fav(self):
-        # 公开收藏夹（B站官方账号的某个公开收藏夹不一定长期稳定，允许空但必须成功返回）
-        out = self.call("fav", media_id=105196, page_size=5)
-        self.assert_nonempty_list(out, "items", "fav")
-
-    def test_19_dynamic(self):
+    def test_12_dynamic(self):
         out = self.call("dynamic", mid=2, limit=5)
         self.assert_nonempty_list(out, "items", "dynamic")
 
-    def test_20_subtitle(self):
+    def test_13_subtitle(self):
         # 字幕必须登录态才给 subtitle_url；没 cookie 时允许走「简介+热评」兜底
         out = self.call("subtitle", target=SAMPLE_BV, max_chars=1000)
-        # 字幕必须登录态才给；无字幕时走「简介 + 热评」兜底，两条路都要能一眼分辨
         self.assertIn("available", out, "subtitle 缺 available（区分真字幕 / 兜底）")
         if out["available"]:
             self.assertTrue(out.get("subtitle") or out.get("body"), "有字幕却没有内容")
@@ -178,15 +150,11 @@ class LiveL2Capabilities(LiveCapabilityBase):
         out = self.call("followings", page_size=5)
         self.assert_nonempty_list(out, "items", "followings")
 
-    def test_06_followers(self):
-        out = self.call("followers", page_size=5)
-        self.assert_nonempty_list(out, "items", "followers")
-
-    def test_07_my_dynamic(self):
+    def test_06_my_dynamic(self):
         out = self.call("my_dynamic", limit=5)
         self.assert_nonempty_list(out, "items", "my_dynamic")
 
-    def test_08_my_bangumi(self):
+    def test_07_my_bangumi(self):
         out = self.call("my_bangumi", page_size=5)
         self.assert_nonempty_list(out, "items", "my_bangumi")
 

@@ -39,15 +39,6 @@ SEASON = {"code": 0, "result": {
                   "pub_time": 1719057600, "duration": 2938060, "bvid": "BV15i421v7FQ"}],
 }}
 
-ART_VIEW = {"code": 0, "data": {
-    "id": 53711426, "title": "夜间突发", "summary": "摘要",
-    "content": "<h1>标题</h1><p>正文一</p><p>正文二</p>",
-    "publish_time": 1700000000, "image_urls": ["a", "b"], "banner_url": "b.jpg",
-    "category": {"id": 42, "name": "全部笔记"},
-}}
-ART_INFO = {"code": 0, "data": {"stats": {"view": 251345, "like": 3132, "coin": 65,
-                                          "favorite": 286, "reply": 241, "share": 2}}}
-
 DYN = {"code": 0, "data": {
     "offset": "1163608706112290850", "has_more": True,
     "items": [
@@ -152,18 +143,13 @@ class HelperTest(unittest.TestCase):
         self.assertEqual(S._clean("A &amp; B"), "A & B")
         self.assertEqual(S._clean(None), "")
 
-    def test_html_text_keeps_paragraph_breaks(self):
-        self.assertEqual(S._html_text("<h1>标题</h1><p>正文一</p><p>正文二</p>"),
-                         "标题\n正文一\n正文二")
-
 
 # ───────────────────────── 注册表 ─────────────────────────
 
 class RegistryTest(unittest.TestCase):
-    NAMES = ["ranking", "popular", "region", "up_info", "up_videos", "season",
-             "article", "live_room", "fav", "relation_stat", "dynamic"]
+    NAMES = ["ranking", "popular", "up_info", "up_videos", "season", "dynamic"]
 
-    def test_eleven_capabilities(self):
+    def test_six_capabilities(self):
         self.assertEqual([c.name for c in S.CAPABILITIES], self.NAMES)
         for c in S.CAPABILITIES:
             self.assertTrue(c.summary.strip(), f"{c.name} 缺中文说明")
@@ -176,8 +162,8 @@ class RegistryTest(unittest.TestCase):
             self.assertIn(name, CAPABILITIES)
 
     def test_required_params(self):
-        self.assertTrue(next(p for p in cap("region").params if p.name == "rid").required)
-        self.assertTrue(next(p for p in cap("article").params if p.name == "cv").required)
+        self.assertTrue(next(p for p in cap("up_info").params if p.name == "mid").required)
+        self.assertTrue(next(p for p in cap("up_videos").params if p.name == "mid").required)
         season = {p.name: p for p in cap("season").params}
         self.assertFalse(season["season_id"].required)
         self.assertFalse(season["ep_id"].required)
@@ -230,34 +216,6 @@ class PopularTest(unittest.TestCase):
             with self.assertRaises(C.BiliError) as cm:
                 run("popular")
         self.assertEqual(cm.exception.kind, "not_found")
-
-
-class RegionTest(unittest.TestCase):
-    def test_uses_newlist_not_dead_dynamic_region(self):
-        rec = Recorder({"code": 0, "data": {
-            "archives": [V1], "page": {"count": 1234, "num": 1, "size": 20}}})
-        with mock.patch.object(C, "get_json", rec):
-            out = run("region", rid=1, page=1, page_size=20)
-        url = rec.urls[0]
-        self.assertIn("/x/web-interface/newlist?", url)   # dynamic/region 已废，别再回去
-        self.assertNotIn("dynamic/region", url)
-        self.assertIn("rid=1", url)
-        self.assertIn("pn=1", url)
-        self.assertIn("ps=20", url)
-        self.assertIn("type=0", url)
-        self.assertEqual(out["total"], 1234)
-        self.assertEqual(out["count"], 1)
-        self.assertEqual(out["items"][0]["author"], "UP甲")
-
-    def test_empty_raises(self):
-        with mock.patch.object(C, "get_json", Recorder({"code": 0, "data": {"archives": []}})):
-            with self.assertRaises(C.BiliError) as cm:
-                run("region", rid=9999)
-        self.assertEqual(cm.exception.kind, "not_found")
-
-    def test_rid_required(self):
-        with self.assertRaises(ValueError):
-            cap("region").bind()
 
 
 # ───────────────────────── UP主 ─────────────────────────
@@ -411,142 +369,6 @@ class SeasonTest(unittest.TestCase):
             with self.assertRaises(C.BiliError) as cm:
                 run("season", season_id=1)
         self.assertEqual(cm.exception.kind, "not_found")
-
-
-# ───────────────────────── 专栏 ─────────────────────────
-
-class ArticleTest(unittest.TestCase):
-    def test_parses_cv_content_and_stats(self):
-        rec = Recorder(ART_VIEW, ART_INFO)
-        with mock.patch.object(C, "get_json", rec):
-            out = run("article", cv="cv53711426")
-        self.assertIn("/x/article/view?id=53711426", rec.urls[0])
-        self.assertIn("/x/article/viewinfo?id=53711426", rec.urls[1])   # 正文接口没统计 → 补一次
-        self.assertEqual(out["id"], "cv53711426")
-        self.assertEqual(out["title"], "夜间突发")
-        self.assertEqual(out["url"], "https://www.bilibili.com/read/cv53711426")
-        self.assertEqual(out["pubdate"], "2023-11-15 06:13")
-        self.assertEqual(out["content"], "标题\n正文一\n正文二")
-        self.assertEqual(out["chars"], len("标题\n正文一\n正文二"))
-        self.assertEqual(out["stats"]["view"], 251345)
-        self.assertEqual(out["images"], 2)
-
-    def test_accepts_url_form(self):
-        with mock.patch.object(C, "get_json", Recorder(ART_VIEW, ART_INFO)):
-            out = run("article", cv="https://www.bilibili.com/read/cv53711426/")
-        self.assertEqual(out["aid"], 53711426)
-
-    def test_no_second_request_when_stats_present(self):
-        view = {"code": 0, "data": dict(ART_VIEW["data"], stats={"view": 7})}
-        rec = Recorder(view)
-        with mock.patch.object(C, "get_json", rec):
-            out = run("article", cv="53711426")
-        self.assertEqual(len(rec.urls), 1)
-        self.assertEqual(out["stats"]["view"], 7)
-
-    def test_bad_cv_raises(self):
-        with self.assertRaises(C.BiliError) as cm:
-            run("article", cv="没有数字")
-        self.assertEqual(cm.exception.kind, "not_found")
-
-    def test_missing_article_raises(self):
-        with mock.patch.object(C, "get_json", Recorder({"code": -404, "data": None})):
-            with self.assertRaises(C.BiliError) as cm:
-                run("article", cv="cv1")
-        self.assertEqual(cm.exception.kind, "not_found")
-
-
-# ───────────────────────── 直播 / 收藏夹 / 关注数 ─────────────────────────
-
-class LiveRoomTest(unittest.TestCase):
-    PAYLOAD = {"code": 0, "data": {
-        "room_id": 21452505, "short_id": 0, "uid": 434334701, "title": "直播标题",
-        "live_status": 1, "online": 1234, "attention": 1121252,
-        "area_name": "英雄联盟", "parent_area_name": "游戏",
-        "live_time": "2024-01-01 20:00:00", "user_cover": "c.jpg", "keyframe": "k.jpg",
-        "description": '<div id="Blive">简介 &amp; 说明</div>'}}
-
-    def test_fields(self):
-        rec = Recorder(self.PAYLOAD)
-        with mock.patch.object(C, "get_json", rec):
-            out = run("live_room", room_id=21452505)
-        self.assertIn("api.live.bilibili.com/room/v1/Room/get_info?room_id=21452505",
-                      rec.urls[0])
-        self.assertEqual(out["status_text"], "直播中")
-        self.assertEqual(out["area"], "英雄联盟")
-        self.assertEqual(out["fans"], 1121252)
-        self.assertEqual(out["live_time"], "2024-01-01 20:00")
-        self.assertIsNone(out["short_id"])              # 0 短号当没有
-        self.assertEqual(out["description"], "简介 & 说明")
-        self.assertEqual(out["url"], "https://live.bilibili.com/21452505")
-
-    def test_offline_status(self):
-        payload = {"code": 0, "data": dict(self.PAYLOAD["data"], live_status=0, online=0)}
-        with mock.patch.object(C, "get_json", Recorder(payload)):
-            out = run("live_room", room_id=1)
-        self.assertEqual(out["status_text"], "未开播")
-
-    def test_missing_raises(self):
-        with mock.patch.object(C, "get_json", Recorder({"code": 0, "data": None})):
-            with self.assertRaises(C.BiliError) as cm:
-                run("live_room", room_id=1)
-        self.assertEqual(cm.exception.kind, "not_found")
-
-
-class FavTest(unittest.TestCase):
-    PAYLOAD = {"code": 0, "data": {
-        "has_more": True,
-        "info": {"id": 123456789, "title": "默认收藏夹", "media_count": 15,
-                 "upper": {"mid": 140319589, "name": "余人"},
-                 "cnt_info": {"collect": 1, "play": 305}},
-        "medias": [{"id": 116793850992230, "bvid": "BV1dG7N6nEQ7", "title": "赛荷",
-                    "upper": {"mid": 1, "name": "甜甜"},
-                    "cnt_info": {"collect": 212, "play": 2312},
-                    "pubtime": 1782133030, "duration": 7}],
-    }}
-
-    def test_fields(self):
-        rec = Recorder(self.PAYLOAD)
-        with mock.patch.object(C, "get_json", rec):
-            out = run("fav", media_id=123456789, page=1, page_size=20)
-        self.assertIn("/x/v3/fav/resource/list?media_id=123456789&pn=1&ps=20", rec.urls[0])
-        self.assertEqual(out["title"], "默认收藏夹")
-        self.assertEqual(out["total"], 15)
-        self.assertTrue(out["has_more"])
-        self.assertIn("favlist?fid=123456789", out["url"])
-        it = out["items"][0]
-        self.assertEqual(it["author"], "甜甜")
-        self.assertEqual(it["duration"], "00:07")
-        self.assertEqual(it["play"], 2312)
-
-    def test_empty_medias_is_ok(self):
-        payload = {"code": 0, "data": dict(self.PAYLOAD["data"], medias=None)}
-        with mock.patch.object(C, "get_json", Recorder(payload)):
-            out = run("fav", media_id=1)
-        self.assertEqual(out["count"], 0)
-
-    def test_missing_info_raises(self):
-        with mock.patch.object(C, "get_json", Recorder({"code": 0, "data": {"info": None}})):
-            with self.assertRaises(C.BiliError) as cm:
-                run("fav", media_id=1)
-        self.assertEqual(cm.exception.kind, "not_found")
-
-
-class RelationStatTest(unittest.TestCase):
-    def test_fields(self):
-        rec = Recorder({"code": 0, "data": {"mid": 2, "following": 430,
-                                            "follower": 1439190, "whisper": 0, "black": 0}})
-        with mock.patch.object(C, "get_json", rec):
-            out = run("relation_stat", vmid=2)
-        self.assertIn("/x/relation/stat?vmid=2", rec.urls[0])
-        self.assertEqual(out["following"], 430)
-        self.assertEqual(out["follower"], 1439190)
-        self.assertEqual(out["url"], "https://space.bilibili.com/2")
-
-    def test_missing_raises(self):
-        with mock.patch.object(C, "get_json", Recorder({"code": 0, "data": None})):
-            with self.assertRaises(C.BiliError):
-                run("relation_stat", vmid=2)
 
 
 # ───────────────────────── 动态 ─────────────────────────

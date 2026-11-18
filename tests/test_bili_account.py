@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """L2 登录态能力的离线单测 —— 全部 mock 掉 client.get_json，不联网、不需要 cookie。
 
-覆盖：8 个能力的归一化输出、mid 从 nav 取、游标翻页、以及「无 cookie 时一个请求都不发」。
+覆盖：7 个能力的归一化输出、mid 从 nav 取、游标翻页、以及「无 cookie 时一个请求都不发」。
 """
 import io
 import urllib.parse
@@ -81,14 +81,6 @@ FOLLOWINGS = {
         "total": 2, "re_version": 0,
         "list": [{"mid": 501, "uname": "关注甲", "sign": "签名"},
                  {"mid": 502, "uname": "关注乙", "sign": ""}],
-    },
-}
-
-FOLLOWERS = {
-    "code": 0,
-    "data": {
-        "total": 1, "re_version": 0,
-        "list": [{"mid": 601, "uname": "粉丝甲", "sign": "你好"}],
     },
 }
 
@@ -254,7 +246,7 @@ class MyFoldersTest(unittest.TestCase):
         self.assertEqual(out["items"], [])
 
 
-# ───────────────────────── 5/6. followings / followers ─────────────────────────
+# ───────────────────────── 5. followings ─────────────────────────
 
 class RelationTest(unittest.TestCase):
     def test_followings(self):
@@ -276,12 +268,6 @@ class RelationTest(unittest.TestCase):
         self.assertIn("pn=3", router.calls[-1])
         self.assertIn("ps=10", router.calls[-1])
         self.assertEqual(out["page"], 3)
-
-    def test_followers(self):
-        out, router = _call("followers", {"relation/followers": FOLLOWERS})
-        self.assertEqual(out["count"], 1)
-        self.assertEqual(out["items"][0]["name"], "粉丝甲")
-        self.assertIn("relation/followers", router.calls[-1])
 
 
 # ───────────────────────── 7. my_dynamic ─────────────────────────
@@ -338,7 +324,7 @@ class MyBangumiTest(unittest.TestCase):
 # ───────────────────────── 无 cookie：不发请求 ─────────────────────────
 
 AUTH_CAPS = ("me", "history", "toview", "my_folders",
-             "followings", "followers", "my_dynamic", "my_bangumi")
+             "followings", "my_dynamic", "my_bangumi")
 
 
 class NoCookieTest(unittest.TestCase):
@@ -350,7 +336,7 @@ class NoCookieTest(unittest.TestCase):
             self.assertEqual(cm.exception.kind, "auth", name)
             gj.assert_not_called()      # 关键：没有 cookie 连 nav 都不该打
 
-    def test_all_eight_registered_as_auth(self):
+    def test_all_seven_registered_as_auth(self):
         from adapters.bilibili.capabilities import CAPABILITIES
         for name in AUTH_CAPS:
             self.assertIn(name, CAPABILITIES)

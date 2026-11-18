@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""L1 站点结构能力：排行榜 / 热门 / 分区 / UP主信息与投稿 / 番剧影视 / 专栏 / 直播 / 公开收藏夹 / 关注数 / 动态。
+"""L1 站点结构能力：排行榜 / 热门 / UP主信息与投稿 / 番剧影视 / 动态。
 
 全部只读；auth 一律 False —— cookie 传了就用（少踩风控），不传也尽量能出数据。
 输出统一成「一眼能看懂」的形状：标题 / 作者 / 链接 / 计数 / 时间（北京时间）。
@@ -14,17 +14,13 @@ from urllib.parse import quote
 from .. import client
 from .spec import Capability, param
 
-# 直播不在 api.bilibili.com 域上；番剧在 api.bilibili.com 但路径在 /pgc 下
-LIVE_API = "https://api.live.bilibili.com"
+# 番剧在 api.bilibili.com 上，但路径在 /pgc 下
 PGC_PATH = "/pgc/view/web/season"
 
 # 统一按北京时间（UTC+8）渲染，不依赖本机时区 —— 与 adapter.py 的 _bj_time 同款写法。
 BJ_OFFSET = 8 * 3600
 
 TAG_RE = re.compile(r"<[^>]+>")
-BLOCK_RE = re.compile(r"(?i)<\s*(?:br|/p|/div|/h[1-6]|/li)\s*/?\s*>")
-SPACE_RE = re.compile(r"[ \t\u3000]+")
-BLANK_RE = re.compile(r"\n{3,}")
 
 # 空间类接口的风控指纹参数：B站网页端每次请求都会带，缺了容易被 -352。
 # 实测（匿名，2026-11）：acc/info 不带 → code=-352 风控校验失败；加上 → code=0。
@@ -39,8 +35,6 @@ _DM_PARAMS = {
 
 # 命中这些码就补指纹再试一次：-352/-412 风控、-799 频控、HTTP 412
 _RISK_CODES = {-352, -412, -799, 412}
-
-_LIVE_STATUS = {0: "未开播", 1: "直播中", 2: "轮播中"}
 
 # 动态类型 → 中文短标签（不懂的类型原样回显）
 _DYN_KIND = {
@@ -110,15 +104,6 @@ def _clean(text) -> str:
     return unescape(TAG_RE.sub("", str(text or ""))).strip()
 
 
-def _html_text(html) -> str:
-    """HTML 正文 → 纯文本：块级标签换行，其余标签剥掉，压掉多余空白。"""
-    text = BLOCK_RE.sub("\n", str(html or ""))
-    text = unescape(TAG_RE.sub("", text))
-    text = SPACE_RE.sub(" ", text)
-    text = BLANK_RE.sub("\n\n", text)
-    return text.strip()
-
-
 def _dur(sec) -> str:
     """秒 → mm:ss（超过 1 小时给 h:mm:ss）。"""
     try:
@@ -138,7 +123,7 @@ def _num(v):
 
 
 def _video_item(v: dict) -> dict:
-    """ranking / popular / newlist 三条接口的视频对象形状基本一致，统一成一样。"""
+    """ranking / popular 两条接口的视频对象形状基本一致，统一成一样。"""
     st = v.get("stat") or {}
     owner = v.get("owner") or {}
     bv = v.get("bvid") or ""
@@ -166,7 +151,7 @@ def _video_item(v: dict) -> dict:
     }
 
 
-# ───────────────────────── 排行榜 / 热门 / 分区 ─────────────────────────
+# ───────────────────────── 排行榜 / 热门 ─────────────────────────
 
 def _ranking(ad, rid=0, limit=50) -> dict:
     """全站 / 分区排行榜。rid=0 为全站；limit 截断条数。"""
@@ -202,35 +187,6 @@ def _popular(ad, page=1, page_size=20) -> dict:
         "page_size": page_size,
         "count": len(raw),
         "no_more": bool(data.get("no_more")),
-        "items": [_video_item(v) for v in raw],
-    }
-
-
-def _region(ad, rid, page=1, page_size=20) -> dict:
-    """分区最新投稿。
-
-    ⚠️ 老端点 dynamic/region 已经废了（rid=1/3/4 一律 -404「啥都木有」，实名实测 2026-11），
-    现用 x/web-interface/newlist：type=0 表示不限投稿类型，不需要 wbi。
-    """
-    rid, page, page_size = int(rid), int(page or 1), int(page_size or 20)
-    data = client.get_json(
-        f"{client.API}/x/web-interface/newlist?rid={rid}"
-        f"&pn={page}&ps={page_size}&type=0",
-        ad.cookie,
-    ).get("data") or {}
-    raw = data.get("archives") or []
-    if not raw:
-        raise client.BiliError(f"分区没有投稿：rid={rid}（分区号可能不存在）", kind="not_found")
-    pg = data.get("page") or {}
-    # newlist 的 page.count 经常返回 0（明明有稿件），0 一律当「未知」，别让人误读成空分区
-    total = _num(pg.get("count")) or None
-    return {
-        "platform": ad.name,
-        "rid": rid,
-        "page": page,
-        "page_size": page_size,
-        "total": total,
-        "count": len(raw),
         "items": [_video_item(v) for v in raw],
     }
 
@@ -400,164 +356,6 @@ def _season(ad, season_id=None, ep_id=None) -> dict:
     }
 
 
-# ───────────────────────── 专栏 ─────────────────────────
-
-def _cv_id(cv) -> int:
-    """cv 号解析：支持 cv53711426 / 53711426 / 专栏 URL。"""
-    m = re.search(r"(\d+)", str(cv or ""))
-    if not m:
-        raise client.BiliError(f"没找到专栏号：{cv}", kind="not_found")
-    return int(m.group(1))
-
-
-def _article(ad, cv) -> dict:
-    """专栏信息与正文。
-
-    x/article/view 给正文和元信息，但不一定带统计；缺就补一次 viewinfo（只多一个请求）。
-    """
-    aid = _cv_id(cv)
-    d = client.get_json(f"{client.API}/x/article/view?id={aid}", ad.cookie).get("data") or {}
-    if not d:
-        raise client.BiliError(f"专栏不存在或不可见：cv{aid}", kind="not_found")
-
-    stats = d.get("stats")
-    if not stats:
-        try:
-            info = client.get_json(
-                f"{client.API}/x/article/viewinfo?id={aid}", ad.cookie).get("data") or {}
-        except client.BiliError:
-            info = {}
-        stats = info.get("stats") or {}
-
-    text = _html_text(d.get("content") or d.get("summary"))
-    return {
-        "platform": ad.name,
-        "id": f"cv{aid}",
-        "aid": aid,
-        "title": _clean(d.get("title")),
-        "author": d.get("author_name") or ((d.get("author") or {}) if isinstance(d.get("author"), dict) else {}).get("name"),
-        "mid": _num(d.get("mid")),
-        "category": ((d.get("category") or {}) if isinstance(d.get("category"), dict) else {}).get("name"),
-        "pubdate": _time(d.get("publish_time")),
-        "words": _num(d.get("words")) or len(text),
-        "url": f"https://www.bilibili.com/read/cv{aid}",
-        "banner": d.get("banner_url"),
-        "images": len(d.get("image_urls") or []),
-        "stats": {
-            "view": _num(stats.get("view")),
-            "like": _num(stats.get("like")),
-            "coin": _num(stats.get("coin")),
-            "favorite": _num(stats.get("favorite")),
-            "reply": _num(stats.get("reply")),
-            "share": _num(stats.get("share")),
-        },
-        "summary": _clean(d.get("summary"))[:200],
-        "chars": len(text),
-        "content": text,
-    }
-
-
-# ───────────────────────── 直播 ─────────────────────────
-
-def _live_room(ad, room_id) -> dict:
-    """直播间信息（api.live 域，不走 wbi）。"""
-    rid = int(room_id)
-    d = client.get_json(
-        f"{LIVE_API}/room/v1/Room/get_info?room_id={rid}", ad.cookie).get("data") or {}
-    if not d:
-        raise client.BiliError(f"直播间不存在：{rid}", kind="not_found")
-    room = _num(d.get("room_id")) or rid
-    st = _num(d.get("live_status")) or 0
-    return {
-        "platform": ad.name,
-        "room_id": room,
-        "short_id": _num(d.get("short_id")) or None,
-        "uid": _num(d.get("uid")),
-        "title": _clean(d.get("title")),
-        "status": st,
-        "status_text": _LIVE_STATUS.get(st, f"未知({st})"),
-        "online": _num(d.get("online")),
-        "fans": _num(d.get("attention")),
-        "area": d.get("area_name"),
-        "parent_area": d.get("parent_area_name"),
-        "live_time": _clip(d.get("live_time")),
-        "cover": d.get("user_cover") or d.get("keyframe"),
-        "description": _html_text(d.get("description"))[:200],
-        "url": f"https://live.bilibili.com/{room}",
-    }
-
-
-# ───────────────────────── 公开收藏夹 ─────────────────────────
-
-def _fav(ad, media_id, page=1, page_size=20) -> dict:
-    """公开收藏夹内容（不需要登录态；私密夹会报 -403）。"""
-    media_id, page, page_size = int(media_id), int(page or 1), int(page_size or 20)
-    d = client.get_json(
-        f"{client.API}/x/v3/fav/resource/list?media_id={media_id}"
-        f"&pn={page}&ps={page_size}&platform=web",
-        ad.cookie,
-    ).get("data") or {}
-    info = d.get("info") or {}
-    if not info:
-        raise client.BiliError(f"收藏夹不存在或不是公开的：media_id={media_id}", kind="not_found")
-
-    owner = info.get("upper") or {}
-    items = []
-    for m in d.get("medias") or []:
-        if not isinstance(m, dict):
-            continue
-        bv = m.get("bvid") or m.get("bv_id") or ""
-        cnt = m.get("cnt_info") or {}
-        up = m.get("upper") or {}
-        items.append({
-            "id": m.get("id"),
-            "bvid": bv or None,
-            "title": _clean(m.get("title")),
-            "author": up.get("name"),
-            "mid": up.get("mid"),
-            "url": _fix_url(m.get("link")) or (
-                f"https://www.bilibili.com/video/{bv}" if bv else None),
-            "duration": _dur(m.get("duration")),
-            "play": _num(cnt.get("play")),
-            "collect": _num(cnt.get("collect")),
-            "fav_time": _time(m.get("fav_time")),
-            "pubdate": _time(m.get("pubtime")),
-        })
-    return {
-        "platform": ad.name,
-        "media_id": info.get("id") or media_id,
-        "title": info.get("title"),
-        "owner": {"mid": _num(owner.get("mid")), "name": owner.get("name")},
-        "total": _num(info.get("media_count")),
-        "page": page,
-        "page_size": page_size,
-        "has_more": bool(d.get("has_more")),
-        "count": len(items),
-        "url": (f"https://space.bilibili.com/{owner.get('mid')}/favlist"
-                f"?fid={info.get('id') or media_id}") if owner.get("mid") else None,
-        "items": items,
-    }
-
-
-# ───────────────────────── 关注数 ─────────────────────────
-
-def _relation_stat(ad, vmid) -> dict:
-    """关注数 / 粉丝数（不需要登录态）。"""
-    vmid = int(vmid)
-    d = client.get_json(f"{client.API}/x/relation/stat?vmid={vmid}", ad.cookie).get("data") or {}
-    if not d:
-        raise client.BiliError(f"取不到关注/粉丝数：vmid={vmid}", kind="not_found")
-    return {
-        "platform": ad.name,
-        "mid": _num(d.get("mid")) or vmid,
-        "following": _num(d.get("following")),
-        "follower": _num(d.get("follower")),
-        "whisper": _num(d.get("whisper")),
-        "black": _num(d.get("black")),
-        "url": f"https://space.bilibili.com/{vmid}",
-    }
-
-
 # ───────────────────────── 动态 ─────────────────────────
 
 def _dyn_item(it: dict) -> dict:
@@ -671,17 +469,6 @@ CAPABILITIES: list[Capability] = [
         auth=False,
     ),
     Capability(
-        name="region",
-        summary="分区最新投稿：按分区号看新上传的视频",
-        handler=_region,
-        params=(
-            param("rid", int, required=True, help="分区号，如 1=动画 3=音乐"),
-            param("page", int, default=1, help="页码"),
-            param("page_size", int, default=20, help="每页条数"),
-        ),
-        auth=False,
-    ),
-    Capability(
         name="up_info",
         summary="UP主信息：昵称 / 签名 / 等级 / 头像 / 主页链接",
         handler=_up_info,
@@ -707,38 +494,6 @@ CAPABILITIES: list[Capability] = [
             param("season_id", int, help="番剧 ss 号（与 ep_id 二选一）"),
             param("ep_id", int, help="单集 ep 号（与 season_id 二选一）"),
         ),
-        auth=False,
-    ),
-    Capability(
-        name="article",
-        summary="专栏：标题 / 作者 / 正文 / 阅读点赞等计数",
-        handler=_article,
-        params=(param("cv", str, required=True, help="cv 号或专栏链接"),),
-        auth=False,
-    ),
-    Capability(
-        name="live_room",
-        summary="直播间：主播、标题、分区、在线人气、开播状态",
-        handler=_live_room,
-        params=(param("room_id", int, required=True, help="直播间号"),),
-        auth=False,
-    ),
-    Capability(
-        name="fav",
-        summary="公开收藏夹：夹名、夹主与里面的视频",
-        handler=_fav,
-        params=(
-            param("media_id", int, required=True, help="收藏夹 media_id"),
-            param("page", int, default=1, help="页码"),
-            param("page_size", int, default=20, help="每页条数"),
-        ),
-        auth=False,
-    ),
-    Capability(
-        name="relation_stat",
-        summary="关注数与粉丝数",
-        handler=_relation_stat,
-        params=(param("vmid", int, required=True, help="用户 mid"),),
         auth=False,
     ),
     Capability(
