@@ -32,6 +32,11 @@ jobs:
       - name: 联网冒烟测试
         run: CNREACH_LIVE=1 python -m unittest tests.test_bilibili_live -v
 
+      # 全能力验收：20 项公开能力每天都验；配了 BILI_COOKIE 才有 8 项登录态能力可验，
+      # 没配时那 8 项由用例内部跳过（不会误报失败）。
+      - name: 全能力验收（28 项）
+        run: CNREACH_LIVE=1 python -m unittest tests.test_bilibili_live_capabilities -v
+
       - name: 失败时钉钉告警
         if: failure()
         env:
