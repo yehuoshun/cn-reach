@@ -49,9 +49,10 @@ Agent 不用关心背后是官方 API、第三方 CLI、浏览器登录态还是
 零第三方依赖（纯 Python 标准库，Python ≥ 3.10）。B站需要登录态才能拿字幕：
 
 ```bash
-# 1) 放好 cookie（含 SESSDATA）。默认路径：
-#    ~/.openclaw/secrets/bilibili-cookies.txt
-#    也可用环境变量 CNREACH_BILI_COOKIE 指定
+# 1) 放好 cookie（含 SESSDATA）。按以下顺序找第一个存在的：
+#    <工作区>/config/bilibili_cookies.txt（本工作区约定：凭据只放根 config/）
+#    <仓库>/config/bilibili_cookies.txt → ~/.openclaw/secrets/bilibili-cookies.txt
+#    也可用环境变量 CNREACH_BILI_COOKIE / BILI_COOKIE_FILE 直接指定
 
 # 2) 体检：cookie / 登录态 / wbi 是否就绪
 export PYTHONPATH=.
@@ -147,8 +148,9 @@ print(bili.search("原神", limit=5)["items"][0])
 支持 **Linux / macOS / Windows**，Python ≥ 3.10，**零第三方依赖**（只用标准库）。
 
 - 时间统一按 **北京时间（UTC+8）** 渲染，不看本机时区 —— 三平台输出一致。
-- cookie 默认路径 `~/.openclaw/secrets/bilibili-cookies.txt`（Windows 即
-  `%USERPROFILE%\.openclaw\secrets\bilibili-cookies.txt`），可用环境变量 `CNREACH_BILI_COOKIE` 覆盖；
+- cookie 查找顺序：环境变量 `CNREACH_BILI_COOKIE` / `BILI_COOKIE_FILE` → 工作区
+  `<workspace>/config/{bilibili_cookies,bilibili,bilibili_cookie,bilibili_credential}.txt` →
+  仓库 `config/` 同名文件 → 旧布局 `~/.openclaw/secrets/bilibili-cookies.txt`（只做兼容读取）；
   路径全走 `pathlib`，不硬编码 `/` 或 `\`。
 - CLI 强制 UTF-8 输出，Windows 下管道/重定向时中文不乱码。
 - CI 跑 **ubuntu / windows / macos** × Python **3.10 / 3.12** 六种组合。
@@ -160,7 +162,7 @@ print(bili.search("原神", limit=5)["items"][0])
 零依赖（标准库 `unittest`），CI 在 push / PR 时跑 **三平台 × 两个 Python 版本**。
 
 ```bash
-# 离线单元测试（mock 掉网络层）—— 135 条
+# 离线单元测试（mock 掉网络层）—— 144 条
 python -m unittest discover -s tests -t . -v
 
 # 联网冒烟测试（默认跳过，需本机有效 cookie）—— 5 条

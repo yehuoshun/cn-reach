@@ -5,7 +5,10 @@
     pytest -q                                        # 若装了 pytest（可直接跑本文件）
 """
 import json
+import os
+import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from adapters.bilibili import adapter as A
@@ -259,6 +262,75 @@ class CommentsTest(unittest.TestCase):
         self.assertEqual(out["count"], 1)
         self.assertEqual(out["items"][0]["user"], "甲")
         self.assertEqual(out["items"][0]["like"], 9)
+
+
+class CookiePathTest(unittest.TestCase):
+    """cookie 文件查找顺序：环境变量 → 工作区 config → 仓库 config → 旧 OpenClaw 布局。"""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+        self.ws = self.root / "ws"
+        self.repo = self.root / "ws" / "code" / "cn-reach"
+        self.ws.mkdir(parents=True)
+        self.repo.mkdir(parents=True)
+
+        env = mock.patch.dict(os.environ, {}, clear=False)
+        env.start()
+        self.addCleanup(env.stop)
+        for key in ("CNREACH_BILI_COOKIE", "BILI_COOKIE_FILE"):
+            os.environ.pop(key, None)
+
+        for name, value in (("workspace_root", lambda: self.ws), ("REPO_ROOT", self.repo)):
+            p = mock.patch.object(C, name, value)
+            p.start()
+            self.addCleanup(p.stop)
+
+    def _touch(self, path, text="SESSDATA=x; bili_jct=y"):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    def test_env_var_wins_over_files(self):
+        self._touch(self.ws / "config" / "bilibili.txt")
+        os.environ["CNREACH_BILI_COOKIE"] = str(self.root / "elsewhere.txt")
+        self.assertEqual(C.cookie_path(), self.root / "elsewhere.txt")
+
+    def test_second_env_var_alone_also_works(self):
+        os.environ["BILI_COOKIE_FILE"] = str(self.root / "legacy.txt")
+        self.assertEqual(C.cookie_path(), self.root / "legacy.txt")
+
+    def test_workspace_config_beats_repo_config(self):
+        # 仓库里放的是优先级更高的文件名，工作区放的是低优先级的 bilibili.txt：
+        # 仍然取工作区 —— 目录优先于文件名顺序。
+        self._touch(self.repo / "config" / "bilibili_cookies.txt")
+        ws_cookie = self._touch(self.ws / "config" / "bilibili.txt")
+        self.assertEqual(C.cookie_path(), ws_cookie)
+
+    def test_workspace_name_order(self):
+        second = self._touch(self.ws / "config" / "bilibili.txt")
+        self._touch(self.ws / "config" / "bilibili_cookies.txt")
+        self.assertEqual(C.cookie_path().name, "bilibili_cookies.txt")
+        (self.ws / "config" / "bilibili_cookies.txt").unlink()
+        self.assertEqual(C.cookie_path(), second)
+
+    def test_repo_config_used_when_workspace_empty(self):
+        repo_cookie = self._touch(self.repo / "config" / "bilibili_cookies.txt")
+        self.assertEqual(C.cookie_path(), repo_cookie)
+
+    def test_falls_back_to_workspace_convention(self):
+        self.assertEqual(C.cookie_path(), self.ws / "config" / "bilibili_cookies.txt")
+
+    def test_candidates_end_with_legacy_path(self):
+        self.assertEqual(C.cookie_candidates()[-1], C.LEGACY_COOKIE)
+
+    def test_load_cookie_reads_the_discovered_file(self):
+        self._touch(self.ws / "config" / "bilibili.txt", "SESSDATA=abc\n")
+        self.assertEqual(C.load_cookie(), "SESSDATA=abc")
+
+    def test_load_cookie_empty_when_missing(self):
+        self.assertEqual(C.load_cookie(), "")
 
 
 class RegistryTest(unittest.TestCase):
