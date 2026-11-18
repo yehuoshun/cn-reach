@@ -59,7 +59,12 @@ export PYTHONPATH=.
 python3 -m adapters.bilibili.cli doctor
 #    体检不通过时退出码为 3（不是 0），方便脚本判断
 
-# 2.1) 看当前有哪些能力（名字 / 说明 / 是否需要登录 / 参数）
+# 2.1) cookie 失效（doctor 里 logged_in=false，或接口报 -101）时扫码换新：
+#    二维码 PNG 落到 <工作区>/tmp，扫完自动写回 cookie 文件（旧文件备份成 .bak-qr）
+#    需要可选依赖 qrcode（pip install "qrcode[pil]"）；没装会打印登录 URL 并以退出码 4 结束
+python -m adapters.bilibili.cli login
+
+# 2.2) 看当前有哪些能力（名字 / 说明 / 是否需要登录 / 参数）
 python3 -m adapters.bilibili.cli list
 
 # 3) 搜索
@@ -162,7 +167,7 @@ print(bili.search("原神", limit=5)["items"][0])
 零依赖（标准库 `unittest`），CI 在 push / PR 时跑 **三平台 × 两个 Python 版本**。
 
 ```bash
-# 离线单元测试（mock 掉网络层）—— 144 条
+# 离线单元测试（mock 掉网络层）—— 159 条
 python -m unittest discover -s tests -t . -v
 
 # 联网冒烟测试（默认跳过，需本机有效 cookie）—— 5 条
@@ -208,6 +213,7 @@ cn-reach/
 │   ├── __init__.py            # 适配器注册表 + get_adapter()
 │   ├── bilibili/              # ✅ B站（只读，20 项能力）
 │   │   ├── client.py          # 请求层：cookie / 重试退避 / wbi 签名 / 错误归一化
+│   │   ├── login.py           # 扫码登录：换新 cookie（二维码 → 轮询 → 写回 .bak-qr 备份）
 │   │   ├── pb.py              # protobuf 极简解码（弹幕用，零依赖手写）
 │   │   ├── adapter.py         # 适配层：能力分发 / doctor / 老版本 API
 │   │   ├── capabilities/      # 能力注册表（对外只暴露能力，不暴露端点）
@@ -219,6 +225,7 @@ cn-reach/
 │   └── <platform>/            # 其它平台照此新增
 ├── tests/
 │   ├── test_bilibili_unit.py              # 离线单元测试（mock 网络）
+│   ├── test_bili_login.py                 # 扫码登录 15 条
 │   ├── test_bili_content.py               # 内容能力 19 条
 │   ├── test_bili_site.py                  # 站点能力 31 条
 │   ├── test_bili_account.py               # 账号能力 18 条
