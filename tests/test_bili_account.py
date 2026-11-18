@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """L2 登录态能力的离线单测 —— 全部 mock 掉 client.get_json，不联网、不需要 cookie。
 
-覆盖：7 个能力的归一化输出、mid 从 nav 取、游标翻页、以及「无 cookie 时一个请求都不发」。
+覆盖：8 个能力的归一化输出、mid 从 nav 取、游标翻页、以及「无 cookie 时一个请求都不发」。
 """
 import io
 import urllib.parse
@@ -321,10 +321,56 @@ class MyBangumiTest(unittest.TestCase):
         self.assertEqual(out["count"], 0)
 
 
+# ───────────────────────── 8. liked（平台侧已赞查询）─────────────────────────
+
+LIKED_HIT = {"code": 0, "data": 1}
+LIKED_MISS = {"code": 0, "data": 0}
+
+
+class LikedTest(unittest.TestCase):
+    def test_liked_true_normalizes(self):
+        out, router = _call("liked", {"archive/has/like": LIKED_HIT}, target="BV1dcWB6bEN9")
+        self.assertEqual(out["platform"], "bilibili")
+        self.assertEqual(out["count"], 1)
+        self.assertEqual(out["liked_count"], 1)
+        self.assertEqual(out["liked_ids"], ["BV1dcWB6bEN9"])
+        it = out["items"][0]
+        self.assertTrue(it["liked"])
+        self.assertEqual(it["url"], "https://www.bilibili.com/video/BV1dcWB6bEN9")
+        self.assertIn("bvid=BV1dcWB6bEN9", router.urls())
+
+    def test_liked_false_keeps_zero(self):
+        # data=0 不能被当成「空值」吞掉（_get 对 0 有 falsy 陷阱，这里走原始信封）
+        out, _ = _call("liked", {"archive/has/like": LIKED_MISS}, target="BV1xx411c7mD")
+        self.assertFalse(out["items"][0]["liked"])
+        self.assertEqual(out["liked_ids"], [])
+        self.assertEqual(out["liked_count"], 0)
+
+    def test_multiple_targets_split_dedup_and_accepts_url(self):
+        out, router = _call(
+            "liked", {"archive/has/like": LIKED_HIT},
+            target="BV1dcWB6bEN9，BV1dcWB6bEN9; https://www.bilibili.com/video/BV1KvWv6zEDk")
+        self.assertEqual([i["id"] for i in out["items"]], ["BV1dcWB6bEN9", "BV1KvWv6zEDk"])
+        self.assertEqual(len([c for c in router.calls if "archive/has/like" in c]), 2)
+
+    def test_limit_caps_requests(self):
+        out, router = _call("liked", {"archive/has/like": LIKED_HIT},
+                            target="BV1aa411c7mD,BV1bb411c7mD,BV1cc411c7mD", limit=2)
+        self.assertEqual(out["count"], 2)
+        self.assertEqual(len([c for c in router.calls if "archive/has/like" in c]), 2)
+
+    def test_no_bvid_raises_without_request(self):
+        with mock.patch.object(client, "get_json") as gj:
+            with self.assertRaises(client.BiliError) as cm:
+                _adapter().call("liked", target="这不是 BV 号")
+        self.assertEqual(cm.exception.kind, "not_found")
+        gj.assert_not_called()
+
+
 # ───────────────────────── 无 cookie：不发请求 ─────────────────────────
 
 AUTH_CAPS = ("me", "history", "toview", "my_folders",
-             "followings", "my_dynamic", "my_bangumi")
+             "followings", "my_dynamic", "my_bangumi", "liked")
 
 
 class NoCookieTest(unittest.TestCase):
@@ -336,7 +382,7 @@ class NoCookieTest(unittest.TestCase):
             self.assertEqual(cm.exception.kind, "auth", name)
             gj.assert_not_called()      # 关键：没有 cookie 连 nav 都不该打
 
-    def test_all_seven_registered_as_auth(self):
+    def test_all_auth_caps_registered_as_auth(self):
         from adapters.bilibili.capabilities import CAPABILITIES
         for name in AUTH_CAPS:
             self.assertIn(name, CAPABILITIES)

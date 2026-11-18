@@ -6,7 +6,7 @@
 
 分两组：
   L1 公开能力 —— 不需要 cookie，国内出口即可跑通（13 项）
-  L2 账号能力 —— 需要有效 cookie，没有 cookie 时整组跳过（7 项）
+  L2 账号能力 —— 需要有效 cookie，没有 cookie 时整组跳过（8 项）
 
 能力面按「只读、本人可访问、不做全量采集」收窄过一轮：playurl / danmaku / online /
 region / article / live_room / fav / relation_stat / followers 已移除，不再验收。
@@ -153,6 +153,16 @@ class LiveL2Capabilities(LiveCapabilityBase):
     def test_06_my_dynamic(self):
         out = self.call("my_dynamic", limit=5)
         self.assert_nonempty_list(out, "items", "my_dynamic")
+
+    def test_08_liked(self):
+        # 已赞查询：data=1 已赞 / 0 未赞，两种都合法，只验形状与布尔类型
+        out = self.call("liked", target=SAMPLE_BV)
+        self.assertEqual(out["count"], 1, "liked 应只查一个 BV")
+        it = out["items"][0]
+        self.assertEqual(it["id"], SAMPLE_BV)
+        self.assertIsInstance(it["liked"], bool, "liked 必须是布尔值")
+        self.assertIsInstance(out["liked_ids"], list, "liked_ids 必须是 list")
+        self.assertEqual(out["liked_count"], len(out["liked_ids"]))
 
     def test_07_my_bangumi(self):
         out = self.call("my_bangumi", page_size=5)

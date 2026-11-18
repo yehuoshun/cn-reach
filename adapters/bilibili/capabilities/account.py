@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""L2 登录态能力：我的信息 / 观看历史 / 稍后再看 / 我的收藏夹 / 关注 / 动态时间线 / 追番。
+"""L2 登录态能力：我的信息 / 观看历史 / 稍后再看 / 我的收藏夹 / 关注 / 动态时间线 / 追番 / 已赞查询。
 
 全部需要登录态（cookie 里要有 SESSDATA）。没有 cookie 时由 BilibiliAdapter.call()
 直接抛 auth 错，一个请求都不会发出去；cookie 过期则由 nav 返回 isLogin=False 兜住。
@@ -282,6 +282,45 @@ def _my_bangumi(ad, page: int = 1, page_size: int = 20, **_) -> dict:
             "count": len(items), "total": data.get("total"), "items": items}
 
 
+# ───────────────────────── 8. liked（平台侧已赞查询）─────────────────────────
+
+MAX_LIKED = 20      # 一次最多查 20 个：每个 BV 一次请求，再多由调用方自己拆
+
+
+def _split_bvids(raw) -> list:
+    """逗号分隔（也认中文逗号 / 分号 / 空白）的一串目标 → 去重后的 BV 号列表。"""
+    out: list = []
+    for part in str(raw or "").replace("，", ",").replace(";", ",").replace(" ", ",").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        bv = client.parse_bvid(part)
+        if bv not in out:
+            out.append(bv)
+    return out
+
+
+def _liked(ad, target: str, limit: int = MAX_LIKED, **_) -> dict:
+    """这些视频我赞过没有（平台侧真实状态：data=1 已赞 / 0 未赞）。
+
+    为什么以平台为准：换设备、在手机端手动点赞、在别处点赞都会反映在这里，
+    本地记录做不到。上游一次只认一个 BV（多 BV 逗号传实测报参数错误），所以循环查。
+    """
+    ids = _split_bvids(target)
+    if not ids:
+        raise client.BiliError(f"没有识别到 BV 号：{target}", kind="not_found")
+    limit = _clamp(limit, 1, MAX_LIKED, MAX_LIKED)
+    items = []
+    for bv in ids[:limit]:
+        # 这里读原始信封：data 是 0/1 整数，_get 会把 0 当空值吞掉
+        resp = client.get_json(f"{client.API}/x/web-interface/archive/has/like?{_q(bvid=bv)}",
+                               ad.cookie)
+        items.append({"id": bv, "liked": bool(resp.get("data")), "url": _video_url(bv)})
+    liked_ids = [i["id"] for i in items if i["liked"]]
+    return {"platform": PLATFORM, "count": len(items), "liked_count": len(liked_ids),
+            "liked_ids": liked_ids, "items": items}
+
+
 # ───────────────────────── 能力声明 ─────────────────────────
 
 CAPABILITIES: list[Capability] = [
@@ -343,6 +382,17 @@ CAPABILITIES: list[Capability] = [
         params=(
             param("page", int, default=1, help="页码，从 1 开始"),
             param("page_size", int, default=20, help="每页条数（上限 50）"),
+        ),
+        auth=True,
+    ),
+    Capability(
+        name="liked",
+        summary="这些视频我赞过没有（平台侧真实状态，可一次问多个）",
+        handler=_liked,
+        params=(
+            param("target", str, required=True,
+                  help="BV 号或视频 URL，多个用逗号分隔"),
+            param("limit", int, default=20, help="最多查多少个（每个一次请求，上限 20）"),
         ),
         auth=True,
     ),
