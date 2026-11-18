@@ -42,11 +42,46 @@ class BiliError(RuntimeError):
         self.kind = kind  # api | risk | network | auth | not_found
 
 
+# ───────────────────── cookie 路径解析 ─────────────────────
+# 查找顺序（借鉴 interest-radar scripts/bili_radar/core.py 的候选链）：
+#   ① 环境变量 CNREACH_BILI_COOKIE / BILI_COOKIE_FILE 显式指定
+#   ② <工作区>/config/<名字> —— 工作区约定「凭据只放根 config/」（<workspace>/{code,work}/<项目>）
+#   ③ <仓库>/config/<名字>   —— 项目内独立部署时用
+#   ④ ~/.openclaw/secrets/bilibili-cookies.txt —— 旧布局，只做兼容读取
+COOKIE_NAMES = ("bilibili_cookies.txt", "bilibili.txt", "bilibili_cookie.txt",
+                "bilibili_credential.txt")
+LEGACY_COOKIE = Path.home() / ".openclaw" / "secrets" / "bilibili-cookies.txt"
+GROUP_DIRS = ("code", "work")
+REPO_ROOT = Path(__file__).resolve().parents[2]  # adapters/bilibili/client.py → 仓库根
+
+
+def workspace_root() -> Path:
+    """工作区根：<workspace>/{code,work}/<项目> 布局下往上两级，否则退回仓库根。"""
+    parent = REPO_ROOT.parent
+    if parent.name.lower() in GROUP_DIRS:
+        return parent.parent
+    return REPO_ROOT
+
+
+def cookie_candidates() -> list[Path]:
+    """候选 cookie 文件，按优先级排列（第一个存在的被采用）。"""
+    out: list[Path] = []
+    for root in (workspace_root(), REPO_ROOT):
+        out.extend(root / "config" / name for name in COOKIE_NAMES)
+    out.append(LEGACY_COOKIE)
+    return out
+
+
 def cookie_path() -> Path:
-    return Path(os.environ.get(
-        "CNREACH_BILI_COOKIE",
-        os.environ.get("BILI_COOKIE_FILE", str(Path.home() / ".openclaw/secrets/bilibili-cookies.txt")),
-    ))
+    """当前使用的 cookie 文件：环境变量优先，其次第一个存在的候选，都没有就指向工作区约定位置。"""
+    for env in ("CNREACH_BILI_COOKIE", "BILI_COOKIE_FILE"):
+        v = os.environ.get(env)
+        if v:
+            return Path(v).expanduser()
+    for cand in cookie_candidates():
+        if cand.is_file():
+            return cand
+    return workspace_root() / "config" / COOKIE_NAMES[0]
 
 
 def load_cookie() -> str:
