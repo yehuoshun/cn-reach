@@ -28,7 +28,7 @@ Agent 不用关心背后是官方 API、第三方 CLI、浏览器登录态还是
 
 | 平台 | 能力 | 后端 | 状态 |
 |---|---|---|---|
-| **B站 / Bilibili** | 搜索、详情、字幕、评论、楼中楼、相关推荐、榜单、热门、UP主、番剧、动态等 **20 项能力**（13 项公开 + 7 项登录态） | 官方 web API（wbi 签名 + Cookie） | ✅ 可用 |
+| **B站 / Bilibili** | 搜索、详情、字幕、评论、楼中楼、相关推荐、榜单、热门、UP主、番剧、动态、已赞查询等 **21 项能力**（13 项公开 + 8 项登录态） | 官方 web API（wbi 签名 + Cookie） | ✅ 可用 |
 | **小黑盒 / HeyBox** | 游戏详情、评分、资讯、社区帖子 | 登录态 API（逆向） | 🗺️ 规划 |
 | 微博 / Weibo | 搜索、热搜、用户时间线 | web API + Cookie | 🗺️ 规划 |
 | 知乎 / Zhihu | 搜索、问答、专栏 | web API + Cookie | 🗺️ 规划 |
@@ -95,7 +95,7 @@ print(bili.search("原神", limit=5)["items"][0])
 
 ---
 
-## B站能力清单（20 项）
+## B站能力清单（21 项）
 
 对外只暴露**能力名**，不罗列端点路径与签名细节——调用方只需要知道「能拿到什么」。
 完整参数表用 `python3 -m adapters.bilibili.cli list` 查看；`*` 表示必填。
@@ -130,7 +130,7 @@ print(bili.search("原神", limit=5)["items"][0])
 | `season` | 番剧 / 影视季：简介、评分、播放数与分集 |
 | `dynamic` | UP主动态（视频 / 图文 / 专栏 / 转发）与互动数 |
 
-**登录态账号（7 项 · 需 cookie，只读）**
+**登录态账号（8 项 · 需 cookie，只读）**
 
 | 能力 | 说明 |
 |---|---|
@@ -141,6 +141,7 @@ print(bili.search("原神", limit=5)["items"][0])
 | `followings` | 我关注的人 |
 | `my_dynamic` | 我的动态时间线 |
 | `my_bangumi` | 我的追番列表 |
+| `liked` | 这些视频我赞过没有（平台侧真实状态，最多一次问 20 个 BV） |
 
 > 写操作（投币、点赞、收藏、发评论、私信）**一个都没有**：本项目只读。
 > 需要登录态的能力在没有 cookie 时**不发请求**，直接按 `auth` 类型报错；
@@ -167,13 +168,13 @@ print(bili.search("原神", limit=5)["items"][0])
 零依赖（标准库 `unittest`），CI 在 push / PR 时跑 **三平台 × 两个 Python 版本**。
 
 ```bash
-# 离线单元测试（mock 掉网络层）—— 159 条
+# 离线单元测试（mock 掉网络层）—— 165 条
 python -m unittest discover -s tests -t . -v
 
 # 联网冒烟测试（默认跳过，需本机有效 cookie）—— 5 条
 CNREACH_LIVE=1 python -m unittest tests.test_bilibili_live -v
 
-# 全部能力的联网验收（20 条：13 项公开 + 7 项账号；无 cookie 时账号组自动跳过）
+# 全部能力的联网验收（21 条：13 项公开 + 8 项账号；无 cookie 时账号组自动跳过）
 CNREACH_LIVE=1 python -m unittest tests.test_bilibili_live_capabilities -v
 ```
 
@@ -211,7 +212,7 @@ CI 分两档：
 cn-reach/
 ├── adapters/
 │   ├── __init__.py            # 适配器注册表 + get_adapter()
-│   ├── bilibili/              # ✅ B站（只读，20 项能力）
+│   ├── bilibili/              # ✅ B站（只读，21 项能力）
 │   │   ├── client.py          # 请求层：cookie / 重试退避 / wbi 签名 / 错误归一化
 │   │   ├── login.py           # 扫码登录：换新 cookie（二维码 → 轮询 → 写回 .bak-qr 备份）
 │   │   ├── pb.py              # protobuf 极简解码（弹幕用，零依赖手写）
@@ -220,7 +221,7 @@ cn-reach/
 │   │   │   ├── spec.py        #   Capability / Param 契约
 │   │   │   ├── content.py     #   内容取数 7 项
 │   │   │   ├── site.py        #   站点结构 6 项
-│   │   │   └── account.py     #   登录态账号 7 项
+│   │   │   └── account.py     #   登录态账号 8 项
 │   │   └── cli.py             # 命令行：按注册表自动生成子命令
 │   └── <platform>/            # 其它平台照此新增
 ├── tests/
