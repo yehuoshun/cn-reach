@@ -139,3 +139,48 @@ def wbi_query(params: dict, mix: str) -> str:
 
 def nav_info(cookie: str = "") -> dict:
     return (get_json(f"{API}/x/web-interface/nav", cookie).get("data") or {})
+
+
+# ───────────────────────── wbi 缓存 / 指纹 cookie ─────────────────────────
+
+_WBI_CACHE: dict[str, tuple[float, str]] = {}
+WBI_TTL = 3600  # 秒；B站每天换 key，一小时刷一次足够
+
+
+def wbi_mix_cached(cookie: str = "") -> str:
+    """带缓存的 wbi 混淆 key —— 避免每个请求都额外打一次 nav。"""
+    key = hashlib.md5((cookie or "").encode()).hexdigest()
+    now = time.time()
+    hit = _WBI_CACHE.get(key)
+    if hit and now - hit[0] < WBI_TTL:
+        return hit[1]
+    mix = wbi_mix(cookie)
+    _WBI_CACHE[key] = (now, mix)
+    return mix
+
+
+def wbi_get(url: str, params: dict, cookie: str = "", **kw) -> dict:
+    """带 wbi 签名的 GET（query 自动补 wts / w_rid）。"""
+    return get_json(f"{url}?{wbi_query(params, wbi_mix_cached(cookie))}", cookie, **kw)
+
+
+def ensure_buvid(cookie: str = "") -> str:
+    """cookie 里没有 buvid3 时，从官方指纹接口取一个补上（降低风控概率）。
+
+    失败不抛异常：拿不到指纹就用原 cookie 继续，让真正的业务错误浮上来。
+    """
+    if "buvid3=" in (cookie or ""):
+        return cookie
+    try:
+        d = (get_json(f"{API}/x/frontend/finger/spi", cookie).get("data") or {})
+    except BiliError:
+        return cookie
+    parts = []
+    if (d.get("b_3") or "").strip():
+        parts.append(f"buvid3={d['b_3'].strip()}")
+    if (d.get("b_4") or "").strip():
+        parts.append(f"buvid4={d['b_4'].strip()}")
+    if not parts:
+        return cookie
+    base = (cookie or "").strip().rstrip(";")
+    return f"{base}; " + "; ".join(parts) if base else "; ".join(parts)

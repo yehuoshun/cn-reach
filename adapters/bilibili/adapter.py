@@ -40,6 +40,21 @@ class BilibiliAdapter:
     def __init__(self, cookie: str | None = None):
         self.cookie = cookie if cookie is not None else client.load_cookie()
 
+    # ───────────────────────── 能力注册表 ─────────────────────────
+
+    def capabilities(self) -> list[dict]:
+        """列出全部能力（名字 / 说明 / 是否需要登录态 / 参数），不含端点细节。"""
+        from .capabilities import catalog
+        return catalog()
+
+    def call(self, name: str, **kwargs) -> dict:
+        """按能力名调用。账号类能力没有 cookie 时直接报 auth 错，不发请求。"""
+        from .capabilities import get
+        cap = get(name)
+        if cap.auth and not self.cookie:
+            raise BiliError(f"能力 {name} 需要登录态（cookie 未配置）", kind="auth")
+        return cap.run(self, **kwargs)
+
     # ───────────────────────── 体检 ─────────────────────────
 
     def doctor(self) -> dict:
